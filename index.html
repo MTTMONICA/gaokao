@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>高考加油！</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#000;cursor:crosshair;}
+  canvas{display:block;}
+  .tip{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.3);font:14px "Microsoft YaHei",sans-serif;pointer-events:none;letter-spacing:3px;z-index:1;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="tip">点 击 任 意 位 置 放 烟 花 · 高 考 加 油 ！</div>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+let W, H;
+let rockets = [];
+let parts = [];
+let sparks = [];
+let nameLabels = [];
+
+function resize() { W = c.width = innerWidth; H = c.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+const rnd = (a,b) => a + Math.random()*(b-a);
+const rndI = (a,b) => Math.floor(rnd(a,b+1));
+const pick = a => a[rndI(0, a.length-1)];
+
+const G = 0.05;
+
+const CLR = [
+  ['#ff3b30','#ff6b5a','#ff9f43','#feca57','#ffeaa7'],
+  ['#ff2d55','#ff6482','#ff8c00','#ffd700','#fff5b0'],
+  ['#af52de','#cc73e8','#ff3b6f','#ff9f43','#ffd93d'],
+  ['#00c6ff','#40d4ff','#5ac8fa','#90e0ef','#caf0f8'],
+  ['#30d158','#4cd964','#a3e635','#d9f99d','#f0fdf4'],
+  ['#ff6700','#ff8c00','#ffa500','#ffd000','#fff3b0'],
+  ['#ff006e','#fb50b2','#8338ec','#3a86ff','#80b6ff'],
+];
+
+const NAMES = [
+  '梅梅高考加油！！！',
+  '卫平高考加油！！！',
+  '媛增高考加油！！！',
+  '沁雪高考加油！！！',
+  '世宇高考加油！！！',
+];
+
+class NameLabel {
+  constructor(x, y, name, theme) {
+    this.x = x;
+    this.y = y;
+    this.name = name;
+    this.theme = theme;
+    this.scale = rnd(0.6, 1.8);
+    this.life = 0;
+    this.phase = 'in';
+    this.holdTime = rnd(0.5, 1.0);
+    this.inSpeed = rnd(0.04, 0.08);
+    this.outSpeed = rnd(0.015, 0.03);
+    this.alive = true;
+    this.sparkTimer = 0;
+  }
+
+  update() {
+    if (this.phase === 'in') {
+      this.life += this.inSpeed;
+      if (this.life >= 1) { this.life = 1; this.phase = 'hold'; }
+    } else if (this.phase === 'hold') {
+      this.holdTime -= 0.016;
+      if (this.holdTime <= 0) this.phase = 'out';
+    } else {
+      this.life -= this.outSpeed;
+      if (this.life <= 0) { this.life = 0; this.alive = false; }
+    }
+
+    this.sparkTimer++;
+    if (this.sparkTimer % 3 === 0 && this.life > 0.1) {
+      const lenS = this.name.length > 4 ? 4 / this.name.length : 1;
+      const w = this.name.length * 28 * this.scale * lenS;
+      const h = 32 * this.scale * lenS;
+      const sx = this.x + rnd(-w/2, w/2);
+      const sy = this.y + rnd(-h/2, h/2);
+      sparks.push({
+        x: sx, y: sy,
+        vx: rnd(-0.8, 0.8), vy: rnd(-1.5, -0.3),
+        life: rnd(0.2, 0.6), ml: 0.6,
+        clr: this.theme[0], sz: rnd(1, 3)
+      });
+    }
+  }
+
+  draw(ctx) {
+    const alpha = this.life;
+    const lenScale = this.name.length > 4 ? Math.min(1, 4 / this.name.length) : 1;
+    const fontSize = Math.floor(40 * this.scale * lenScale);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `bold ${fontSize}px "YouYuan","STCaiyun","PingFang SC","Microsoft YaHei",sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = this.theme[0];
+    ctx.fillText(this.name, this.x, this.y);
+    ctx.restore();
+  }
+}
+
+class Rocket {
+  constructor(sx, sy) {
+    this.x = sx; this.y = sy;
+    this.vx = rnd(-1.5, 1.5);
+    this.vy = rnd(11, 18);
+    this.tail = [];
+    this.alive = true;
+    this.theme = pick(CLR);
+    this.targetY = rnd(Math.max(30, sy - 550), Math.max(60, sy - 150));
+    this.tick = 0;
+  }
+
+  update() {
+    this.tick++;
+    this.y -= this.vy;
+    this.x += this.vx;
+    this.vy *= 0.998;
+    if (this.tick % 2 === 0) {
+      this.tail.push({ x: this.x + rnd(-1.5,1.5), y: this.y + rnd(3,7), life: 1, sz: rnd(1,2.5) });
+    }
+    for (let t of this.tail) t.life -= 0.045;
+    this.tail = this.tail.filter(t => t.life > 0);
+    if (this.y <= this.targetY) {
+      this.alive = false;
+      explode(this.x, this.y, this.theme);
+    }
+  }
+
+  draw(ctx) {
+    ctx.fillStyle = '#ffb800';
+    for (let t of this.tail) {
+      ctx.globalAlpha = t.life * 0.6;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.sz * t.life, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = '#ffa000'; ctx.shadowBlur = 16;
+    ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function explode(x, y, theme) {
+  const scale = rnd(0.5, 1.5);
+  const type = rnd(0, 1);
+
+  if (type < 0.4)       peony(x, y, theme, scale);
+  else if (type < 0.6)  ring(x, y, theme, scale);
+  else if (type < 0.75) willow(x, y, theme, scale);
+  else if (type < 0.9)  chrysanthemum(x, y, theme, scale);
+  else                  palm(x, y, theme, scale);
+
+  for (let i = 0; i < 18; i++) {
+    const a = rnd(0, Math.PI*2);
+    const sp = rnd(0.2, 3);
+    sparks.push({
+      x, y,
+      vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: rnd(0.08, 0.35), ml: 0.35,
+      clr: '#fff', sz: rnd(2, 6)
+    });
+  }
+
+  if (Math.random() < 0.10) {
+    const name = pick(NAMES);
+    const nameTheme = pick(CLR);
+    nameLabels.push(new NameLabel(x, y - 60, name, [nameTheme[0], nameTheme[3] || nameTheme[1]]));
+  }
+}
+
+function peony(x, y, t, sc) {
+  const n = Math.floor(rnd(130, 240) * sc);
+  for (let i = 0; i < n; i++) {
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = rnd(0, Math.PI*2);
+    const sp = rnd(2, 9) * sc;
+    parts.push({
+      x, y,
+      vx: Math.sin(phi)*Math.cos(theta)*sp,
+      vy: Math.sin(phi)*Math.sin(theta)*sp,
+      clr: pick(t), sz: rnd(1.5, 4)*sc,
+      life: rnd(0.6, 1.3), ml: 1.3,
+      dc: rnd(0.005, 0.016), gr: 1, fr: 0.988,
+      tr: Math.random() < 0.25
+    });
+  }
+  for (let i = 0; i < Math.floor(50*sc); i++) {
+    const a = rnd(0, Math.PI*2), sp = rnd(1, 4.5)*sc;
+    parts.push({
+      x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      clr: pick(t), sz: rnd(1,2.5)*sc,
+      life: rnd(0.3,0.6), ml: 0.6,
+      dc: rnd(0.012,0.03), gr: 1.4, fr: 0.98, tr: false
+    });
+  }
+}
+
+function ring(x, y, t, sc) {
+  const n = Math.floor(rnd(50, 80) * sc);
+  const spd = rnd(5, 10) * sc;
+  for (let i = 0; i < n; i++) {
+    const a = (Math.PI*2*i)/n + rnd(-0.03, 0.03);
+    parts.push({
+      x, y,
+      vx: Math.cos(a)*spd*rnd(0.9,1.1),
+      vy: Math.sin(a)*spd*rnd(0.9,1.1),
+      clr: pick(t), sz: rnd(2.5, 5)*sc,
+      life: rnd(0.5, 1.1), ml: 1.1,
+      dc: rnd(0.008, 0.02), gr: 0.4, fr: 0.992, tr: true
+    });
+  }
+  for (let i = 0; i < Math.floor(30*sc); i++) {
+    const a = rnd(0, Math.PI*2), sp = rnd(0.5, 3)*sc;
+    parts.push({
+      x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      clr: pick(t), sz: rnd(1,2.5)*sc,
+      life: rnd(0.3,0.6), ml: 0.6,
+      dc: rnd(0.015,0.03), gr: 1.6, fr: 0.975, tr: false
+    });
+  }
+}
+
+function willow(x, y, t, sc) {
+  const n = Math.floor(rnd(60, 100) * sc);
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, Math.PI*2), sp = rnd(3, 7)*sc;
+    parts.push({
+      x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp*0.4,
+      clr: pick(t), sz: rnd(1, 2.2)*sc,
+      life: rnd(1.2, 2.5), ml: 2.5,
+      dc: rnd(0.002, 0.005), gr: 2.5, fr: 0.994, tr: true
+    });
+  }
+}
+
+function chrysanthemum(x, y, t, sc) {
+  const n = Math.floor(rnd(100, 160) * sc);
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, Math.PI*2), sp = rnd(4, 9)*sc;
+    parts.push({
+      x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      clr: pick(t), sz: rnd(1, 2.5)*sc,
+      life: rnd(0.5, 1), ml: 1,
+      dc: rnd(0.005, 0.012), gr: 0.7, fr: 0.99, tr: true
+    });
+  }
+  for (let i = 0; i < Math.floor(40*sc); i++) {
+    const a = rnd(0, Math.PI*2);
+    sparks.push({
+      x, y,
+      vx: Math.cos(a)*rnd(0.5,4)*sc,
+      vy: Math.sin(a)*rnd(0.5,4)*sc,
+      life: rnd(0.4, 1), ml: 1,
+      clr: pick(t), sz: rnd(1, 3)
+    });
+  }
+}
+
+function palm(x, y, t, sc) {
+  peony(x, y, t, sc*0.5);
+  for (let i = 0; i < Math.floor(35*sc); i++) {
+    const a = rnd(0, Math.PI*2), sp = rnd(1, 3)*sc;
+    parts.push({
+      x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp - 2.5,
+      clr: pick(t), sz: rnd(2, 4)*sc,
+      life: rnd(0.8, 1.6), ml: 1.6,
+      dc: rnd(0.004, 0.01), gr: 3, fr: 0.99, tr: true
+    });
+  }
+}
+
+let trails = [];
+
+function loop() {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalCompositeOperation = 'lighter';
+
+  for (let i = rockets.length-1; i >= 0; i--) {
+    rockets[i].update();
+    rockets[i].draw(ctx);
+    if (!rockets[i].alive) rockets.splice(i,1);
+  }
+
+  for (let i = parts.length-1; i >= 0; i--) {
+    const p = parts[i];
+    p.life -= p.dc;
+    if (p.life <= 0) { parts.splice(i,1); continue; }
+    p.vx *= p.fr; p.vy *= p.fr;
+    p.vy += G * p.gr;
+    p.x += p.vx; p.y += p.vy;
+    if (p.tr && Math.random() < 0.5) {
+      trails.push({ x: p.x, y: p.y, life: 0.35, sz: p.sz*0.45, clr: p.clr });
+    }
+    const al = Math.max(0, p.life / p.ml);
+    const r = p.sz * (0.2 + 0.8*al);
+    ctx.globalAlpha = al;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fillStyle = p.clr; ctx.fill();
+  }
+
+  for (let i = trails.length-1; i >= 0; i--) {
+    const t = trails[i];
+    t.life -= 0.035;
+    if (t.life <= 0) { trails.splice(i,1); continue; }
+    ctx.globalAlpha = t.life * 0.35;
+    ctx.beginPath(); ctx.arc(t.x, t.y, t.sz*t.life, 0, Math.PI*2);
+    ctx.fillStyle = t.clr; ctx.fill();
+  }
+
+  for (let i = sparks.length-1; i >= 0; i--) {
+    const s = sparks[i];
+    s.life -= 0.02;
+    if (s.life <= 0) { sparks.splice(i,1); continue; }
+    s.x += s.vx; s.y += s.vy;
+    s.vx *= 0.97; s.vy += G*0.5;
+    const twinkle = 0.3 + 0.7*Math.abs(Math.sin(performance.now()*0.025 + i));
+    ctx.globalAlpha = (s.life/s.ml) * twinkle;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.sz*(s.life/s.ml), 0, Math.PI*2);
+    ctx.fillStyle = s.clr; ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  for (let i = nameLabels.length-1; i >= 0; i--) {
+    nameLabels[i].update();
+    nameLabels[i].draw(ctx);
+    if (!nameLabels[i].alive) nameLabels.splice(i,1);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function launch(cx, cy) {
+  const count = rndI(1, 3);
+  for (let i = 0; i < count; i++) {
+    rockets.push(new Rocket(cx + rnd(-20, 20), cy + rnd(0, 25)));
+  }
+}
+
+c.addEventListener('click', e => launch(e.clientX, e.clientY));
+c.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (let t of e.changedTouches) launch(t.clientX, t.clientY);
+}, { passive: false });
+
+loop();
+</script>
+</body>
+</html>
