@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>高考加油！</title>
+<title>陈秉文高考加油！！！</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{width:100%;height:100%;overflow:hidden;background:#000;cursor:crosshair;}
@@ -42,13 +42,7 @@ const CLR = [
   ['#ff006e','#fb50b2','#8338ec','#3a86ff','#80b6ff'],
 ];
 
-const NAMES = [
-  '梅梅高考加油！！！',
-  '卫平高考加油！！！',
-  '媛增高考加油！！！',
-  '沁雪高考加油！！！',
-  '世宇高考加油！！！',
-];
+const NAMES = ['陈秉文高考加油！！！'];
 
 class NameLabel {
   constructor(x, y, name, theme) {
@@ -172,7 +166,7 @@ function explode(x, y, theme) {
     });
   }
 
-  if (Math.random() < 0.10) {
+  if (Math.random() < 0.18) {
     const name = pick(NAMES);
     const nameTheme = pick(CLR);
     nameLabels.push(new NameLabel(x, y - 60, name, [nameTheme[0], nameTheme[3] || nameTheme[1]]));
